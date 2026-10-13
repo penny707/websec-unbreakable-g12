@@ -1,0 +1,22 @@
+html {
+  position: relative;
+  min-height: 100%;
+  font-size: 15px;
+}
+
+body {
+  margin-bottom: 70px;
+}
+
+.footer {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  height: 50px;
+  line-height: 50px;
+  font-size: 0.85rem;
+}
+
+.message-body {
+  white-space: pre-wrap;
+}

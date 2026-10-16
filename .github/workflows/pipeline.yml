@@ -10,8 +10,14 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  secret-scan:
+    name: Secret scanning (Gitleaks)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: echo "De pipeline werkt" && ls
+        with:
+          fetch-depth: 0
+      - name: Gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 \
+            git /repo --redact --verbose --exit-code 1

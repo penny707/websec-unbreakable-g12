@@ -1,12 +1,30 @@
 services:
+  bunkerweb:
+    image: bunkerity/bunkerweb-all-in-one:1.6.16
+    ports:
+      - "80:8080/tcp"
+      - "443:8443/tcp"
+    environment:
+      SERVER_NAME: "g12.ipv6.thelastgym.be"
+      SERVICE_UI: "no"
+      USE_IPV6: "yes"
+      AUTO_LETS_ENCRYPT: "yes"
+      USE_LETS_ENCRYPT_STAGING: "no"
+      USE_REVERSE_PROXY: "yes"
+      REVERSE_PROXY_URL: "/"
+      REVERSE_PROXY_HOST: "http://app:8080"
+    volumes:
+      - bw-data:/data
+    networks: [dmz, app]
+    restart: unless-stopped
+
   app:
     build: ./app
-    ports:
-      - "8080:8080"
     environment:
-      ConnectionStrings__Unbreakable: "Host=db;Port=5432;Database=unbreakable;Username=unbreakable;Password=Unbr3akable!2026"
+      ConnectionStrings__Unbreakable: "Host=db;Port=5432;Database=unbreakable;Username=unbreakable;Password=${POSTGRES_PASSWORD}"
     depends_on:
       - db
+    networks: [app, data]
     restart: unless-stopped
 
   db:
@@ -14,10 +32,19 @@ services:
     environment:
       POSTGRES_DB: unbreakable
       POSTGRES_USER: unbreakable
-      POSTGRES_PASSWORD: Unbr3akable!2026
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - dbdata:/var/lib/postgresql/data
+    networks: [data]
     restart: unless-stopped
+
+networks:
+  dmz:
+    enable_ipv6: true
+  app:
+  data:
+    internal: true
 
 volumes:
   dbdata:
+  bw-data:

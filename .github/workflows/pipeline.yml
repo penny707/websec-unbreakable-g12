@@ -30,48 +30,26 @@ jobs:
       security-events: write
     strategy:
       matrix:
-        include:
-          - language: csharp
-            build-mode: manual
-          - language: javascript-typescript
-            build-mode: none
+        language: [csharp, javascript-typescript]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        if: matrix.language == 'csharp'
-        with:
-          dotnet-version: '10.0.x'
       - uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
           languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.build-mode }}
+          build-mode: none
           queries: security-extended
-      - name: App bouwen voor CodeQL
-        if: matrix.build-mode == 'manual'
-        run: dotnet build app/Unbreakable.csproj
       - uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
           category: /language:${{ matrix.language }}
           output: sarif-results
-      - name: Debug - alle bevindingen
+      - name: Faal bij bevindingen met ernst hoog of kritiek
         run: |
-          ls -la sarif-results
-          jq -r '.runs[].results[] | "\(.ruleId) \(.level) \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)"' sarif-results/*.sarif
-      - name: Faal bij nieuwe bevindingen met ernst hoog of kritiek
-        run: |
-          accepted='[]'
-          if [ -f .github/codeql-accepted.txt ]; then
-            accepted=$(grep -v '^[[:space:]]*#' .github/codeql-accepted.txt | grep -v '^[[:space:]]*$' \
-              | awk '{print $1"|"$2}' | jq -R . | jq -s .)
-          fi
-          jq -r --argjson acc "$accepted" '
+          jq -r '
             .runs[]
             | ( [ (.tool.driver.rules // []), ((.tool.extensions // []) | map(.rules // []) | add // []) ]
                 | add | map({key: .id, value: (.properties["security-severity"] // "0" | tonumber)}) | from_entries ) as $sev
             | .results[]
             | select(($sev[.ruleId] // 0) >= 7.0)
-            | (.ruleId + "|" + .locations[0].physicalLocation.artifactLocation.uri) as $key
-            | select(($acc | index($key)) | not)
-            | "NIEUW: \($key) regel \(.locations[0].physicalLocation.region.startLine)"
-          ' sarif-results/*.sarif | tee nieuw.txt
-          test ! -s nieuw.txt
+            | "\(.ruleId) \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)"
+          ' sarif-results/*.sarif | tee hoog.txt
+          test ! -s hoog.txt

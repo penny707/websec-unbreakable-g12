@@ -53,3 +53,21 @@ jobs:
             | "\(.ruleId) \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)"
           ' sarif-results/*.sarif | tee hoog.txt
           test ! -s hoog.txt
+
+  sca:
+    name: SCA (Trivy en Retire.js)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Trivy - alle bevindingen (waarschuwen)
+        run: |
+          docker run --rm -v "$PWD:/src" aquasec/trivy:0.75.0 \
+            fs --scanners vuln --exit-code 0 /src
+      - name: Trivy - hoog en kritiek (blokkeren)
+        run: |
+          docker run --rm -v "$PWD:/src" aquasec/trivy:0.75.0 \
+            fs --scanners vuln --severity HIGH,CRITICAL --ignorefile /src/.trivyignore --exit-code 1 /src
+      - name: Retire.js - alle bevindingen (waarschuwen)
+        run: npx --yes retire@6.1.0 --path app/wwwroot --exitwith 0
+      - name: Retire.js - hoog en kritiek (blokkeren)
+        run: npx --yes retire@6.1.0 --path app/wwwroot --severity high --exitwith 1

@@ -42,6 +42,10 @@ jobs:
         with:
           category: /language:${{ matrix.language }}
           output: sarif-results
+      - name: Debug - alle bevindingen
+        run: |
+          ls -la sarif-results
+          jq -r '.runs[].results[] | "\(.ruleId) \(.level) \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)"' sarif-results/*.sarif
       - name: Faal bij nieuwe bevindingen met ernst hoog of kritiek
         run: |
           accepted='[]'

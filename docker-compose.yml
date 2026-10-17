@@ -8,6 +8,8 @@ services:
       SERVER_NAME: "g12.ipv6.thelastgym.be"
       SERVICE_UI: "no"
       USE_IPV6: "yes"
+      CUSTOM_CONF_MODSEC_xuser: |
+        SecRule REQUEST_HEADERS:X-User "!@rx ^[A-Za-z0-9._ -]{1,40}$$" "id:1000001,phase:1,deny,status:403,log,msg:'Ongeldige X-User header (virtuele patch SQLi)'"
       AUTO_LETS_ENCRYPT: "yes"
       USE_LETS_ENCRYPT_STAGING: "no"
       USE_REVERSE_PROXY: "yes"

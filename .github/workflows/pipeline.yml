@@ -21,3 +21,42 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 \
             git /repo --redact --verbose --exit-code 1
+
+  sast:
+    name: SAST (CodeQL)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      matrix:
+        language: [ csharp, javascript-typescript ]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          queries: security-extended
+      - uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          category: /language:${{ matrix.language }}
+          output: sarif-results
+      - name: Faal bij nieuwe bevindingen met ernst hoog of kritiek
+        run: |
+          accepted='[]'
+          if [ -f .github/codeql-accepted.txt ]; then
+            accepted=$(grep -v '^[[:space:]]*#' .github/codeql-accepted.txt | grep -v '^[[:space:]]*$' \
+              | awk '{print $1"|"$2}' | jq -R . | jq -s .)
+          fi
+          jq -r --argjson acc "$accepted" '
+            .runs[]
+            | ( [ (.tool.driver.rules // []), ((.tool.extensions // []) | map(.rules // []) | add // []) ]
+                | add | map({key: .id, value: (.properties["security-severity"] // "0" | tonumber)}) | from_entries ) as $sev
+            | .results[]
+            | select(($sev[.ruleId] // 0) >= 7.0)
+            | (.ruleId + "|" + .locations[0].physicalLocation.artifactLocation.uri) as $key
+            | select(($acc | index($key)) | not)
+            | "NIEUW: \($key) regel \(.locations[0].physicalLocation.region.startLine)"
+          ' sarif-results/*.sarif | tee nieuw.txt
+          test ! -s nieuw.txt

@@ -1,0 +1,2 @@
+cs/sql-injection app/Program.cs:89
+js/xss app/wwwroot/js/app.js:101

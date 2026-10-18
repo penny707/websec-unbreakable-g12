@@ -1,0 +1,3 @@
+# Newtonsoft.Json 12.0.1: DoS bij deserialiseren van diep geneste JSON.
+# De app serialiseert enkel (export), deserialiseert nergens. Zie docs/aanvaarde-bevindingen.md
+CVE-2024-21907

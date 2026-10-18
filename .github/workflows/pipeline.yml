@@ -52,8 +52,19 @@ jobs:
             | .results[]
             | select(($sev[.ruleId] // 0) >= 7.0)
             | "\(.ruleId) \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)"
-          ' sarif-results/*.sarif | tee hoog.txt
-          test ! -s hoog.txt
+          ' sarif-results/*.sarif | sort -u > hoog.txt
+          echo "== Alle bevindingen met ernst hoog of kritiek =="
+          cat hoog.txt || true
+          # 1) Negeer third-party bibliotheken (niet onze code, bv. Bootstrap)
+          grep -v ' app/wwwroot/lib/' hoog.txt > hoog-eigen.txt || true
+          # 2) Verwijder de aanvaarde eerste-run-bevindingen (zie docs/aanvaarde-bevindingen.md)
+          grep -vxF -f .codeql-accept.txt hoog-eigen.txt > hoog-nieuw.txt || true
+          if [ -s hoog-nieuw.txt ]; then
+            echo "== NIEUWE, niet-aanvaarde kritieke bevindingen =="
+            cat hoog-nieuw.txt
+            exit 1
+          fi
+          echo "OK: geen nieuwe kritieke bevindingen (third-party en aanvaarde bevindingen genegeerd)."
 
   sca:
     name: SCA (Trivy en Retire.js)

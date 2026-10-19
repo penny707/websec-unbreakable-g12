@@ -83,3 +83,24 @@ jobs:
         run: npx --yes retire@6.1.0 --path app/wwwroot --exitwith 0
       - name: Retire.js - hoog en kritiek (blokkeren)
         run: npx --yes retire@6.1.0 --path app/wwwroot --severity high --exitwith 1
+
+
+  deploy:
+    name: Uitrollen naar g12
+    needs: [secret-scan, sast, sca]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, g12]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Geheimen klaarzetten
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          umask 077
+          printf 'POSTGRES_PASSWORD=%s\n' "$DB_PASSWORD" > .env
+      - name: App bouwen en starten
+        run: docker compose -p websec-unbreakable-g12 up -d --build --remove-orphans
+      - name: Health check
+        run: |
+          sleep 20
+          curl -fsS https://g12.ipv6.thelastgym.be/health

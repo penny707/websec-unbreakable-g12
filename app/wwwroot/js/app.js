@@ -1,6 +1,7 @@
 // De schermen van Unbreakable. Navigeren gebeurt met het deel na # in de URL.
 
 import { api, currentUser, setUser } from './api.js';
+import { normalize, cleanKey, encrypt, decrypt, sign, verifyMac } from './crypto.js';
 
 const app = document.getElementById('app');
 
@@ -62,13 +63,11 @@ function renderLogin() {
 
 async function renderInbox(params) {
     const user = currentUser();
-    const q = params.get('q') || '';
     const from = params.get('from') || '';
 
     const all = await api.inbox();
     const senders = [...new Set(all.map(m => m.sender))].sort();
-    const found = q ? await api.search(q) : all;
-    const messages = found.filter(m => !from || m.sender === from);
+    const messages = all.filter(m => !from || m.sender === from);
 
     app.innerHTML = `
         <h1>Inbox van ${escapeHtml(user)}</h1>
@@ -86,31 +85,22 @@ async function renderInbox(params) {
                     </select>
                 </div>
                 <div class="col-auto">
-                    <label for="q">Zoeken</label>
-                    <input id="q" class="form-control" value="${escapeHtml(q)}" />
-                </div>
-                <div class="col-auto">
                     <button type="submit" class="btn btn-secondary">Filter</button>
                 </div>
             </div>
         </form>
-        <p id="searched"></p>
         <div id="list"></div>`;
-
-    if (q) {
-        window.jQuery('#searched').html('Je zocht naar: ' + q);
-    }
 
     const rows = messages.map(m => `
         <tr>
             <td>${escapeHtml(m.sender)}</td>
-            <td><a href="#/bericht/${m.id}">${m.subject}</a></td>
+            <td><a href="#/bericht/${m.id}">Versleuteld bericht (lijn ${m.codebookLine})</a></td>
             <td>${formatDate(m.sentAt)}</td>
         </tr>`).join('');
 
     document.getElementById('list').innerHTML = messages.length
         ? `<table class="table">
-               <thead><tr><th>Van</th><th>Onderwerp</th><th>Verzonden</th></tr></thead>
+               <thead><tr><th>Van</th><th>Bericht</th><th>Verzonden</th></tr></thead>
                <tbody>${rows}</tbody>
            </table>`
         : '<p class="text-muted">Geen berichten.</p>';
@@ -118,9 +108,7 @@ async function renderInbox(params) {
     document.getElementById('filter').addEventListener('submit', (event) => {
         event.preventDefault();
         const next = new URLSearchParams();
-        const newQ = document.getElementById('q').value;
         const newFrom = document.getElementById('from').value;
-        if (newQ) next.set('q', newQ);
         if (newFrom) next.set('from', newFrom);
         location.hash = '#/inbox' + (next.toString() ? '?' + next.toString() : '');
     });
@@ -142,19 +130,48 @@ async function renderMessage(id) {
     const m = await api.message(id);
 
     app.innerHTML = `
-        <h1>${m.subject}</h1>
+        <h1>Bericht</h1>
         <dl class="row">
             <dt class="col-sm-2">Van</dt><dd class="col-sm-10">${escapeHtml(m.sender)}</dd>
             <dt class="col-sm-2">Aan</dt><dd class="col-sm-10">${escapeHtml(m.recipient)}</dd>
             <dt class="col-sm-2">Verzonden</dt><dd class="col-sm-10">${formatDate(m.sentAt)}</dd>
         </dl>
         <div class="card mb-3"><div class="card-body message-body" id="body"></div></div>
+        <form id="unlock" class="mb-3">
+            <div class="form-group">
+                <label for="otpkey">Sleutelregel ${m.codebookLine} uit het codeboek</label>
+                <input id="otpkey" type="password" class="form-control" autocomplete="off" required />
+            </div>
+            <div class="form-group">
+                <label for="mackey">HMAC-sleutel</label>
+                <input id="mackey" type="password" class="form-control" autocomplete="off" required />
+            </div>
+            <button type="submit" class="btn btn-primary">Ontsleutelen</button>
+        </form>
         <p>
             <button id="delete" class="btn btn-outline-danger">Verwijderen</button>
             <a href="#/inbox" class="btn btn-link">Terug naar je inbox</a>
         </p>`;
 
-    document.getElementById('body').textContent = m.body;
+    const bodyEl = document.getElementById('body');
+    bodyEl.textContent = 'Versleuteld: ' + m.ciphertext;
+
+    document.getElementById('unlock').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        bodyEl.classList.remove('text-danger');
+        try {
+            const ok = await verifyMac(document.getElementById('mackey').value, m.codebookLine, m.ciphertext, m.hmac);
+            if (!ok) {
+                bodyEl.textContent = 'De MAC klopt niet: dit bericht is aangepast of de HMAC-sleutel is fout.';
+                bodyEl.classList.add('text-danger');
+                return;
+            }
+            bodyEl.textContent = decrypt(m.ciphertext, cleanKey(document.getElementById('otpkey').value));
+        } catch (error) {
+            bodyEl.textContent = error.message;
+            bodyEl.classList.add('text-danger');
+        }
+    });
 
     document.getElementById('delete').addEventListener('click', async () => {
         if (confirm('Ben je zeker dat je dit bericht wil verwijderen?')) {
@@ -184,13 +201,23 @@ async function renderNew() {
                         </datalist>
                     </div>
                     <div class="form-group">
-                        <label for="subject">Onderwerp</label>
-                        <input id="subject" class="form-control" required maxlength="100" />
+                        <label for="line">Lijnnummer in het codeboek</label>
+                        <input id="line" type="number" min="1" class="form-control" required />
+                    </div>
+                    <div class="form-group">
+                        <label for="otpkey">Sleutelregel</label>
+                        <input id="otpkey" type="password" class="form-control" autocomplete="off" required />
+                    </div>
+                    <div class="form-group">
+                        <label for="mackey">HMAC-sleutel</label>
+                        <input id="mackey" type="password" class="form-control" autocomplete="off" required />
                     </div>
                     <div class="form-group">
                         <label for="text">Bericht</label>
-                        <textarea id="text" class="form-control" rows="6" required maxlength="2000"></textarea>
+                        <textarea id="text" class="form-control" rows="2" required maxlength="40"></textarea>
+                        <small class="text-muted">Maximaal 40 tekens: letters, cijfers en spaties.</small>
                     </div>
+                    <div id="error" class="text-danger mb-2"></div>
                     <button type="submit" class="btn btn-primary">Versturen</button>
                     <a href="#/inbox" class="btn btn-link">Annuleren</a>
                 </form>
@@ -199,12 +226,21 @@ async function renderNew() {
 
     document.getElementById('compose').addEventListener('submit', async (event) => {
         event.preventDefault();
-        await api.send({
-            recipient: document.getElementById('recipient').value.trim(),
-            subject: document.getElementById('subject').value,
-            body: document.getElementById('text').value,
-        });
-        location.hash = '#/inbox';
+        try {
+            const line = Number(document.getElementById('line').value);
+            const key = cleanKey(document.getElementById('otpkey').value);
+            const ciphertext = encrypt(normalize(document.getElementById('text').value), key);
+            const hmac = await sign(document.getElementById('mackey').value, line, ciphertext);
+            await api.send({
+                recipient: document.getElementById('recipient').value.trim(),
+                ciphertext,
+                codebookLine: line,
+                hmac,
+            });
+            location.hash = '#/inbox';
+        } catch (error) {
+            document.getElementById('error').textContent = error.message;
+        }
     });
 }
 

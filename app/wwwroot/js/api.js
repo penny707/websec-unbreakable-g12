@@ -31,7 +31,6 @@ async function call(method, path, body) {
 export const api = {
     users: () => call('GET', '/users'),
     inbox: (from) => call('GET', '/messages' + (from ? '?from=' + encodeURIComponent(from) : '')),
-    search: (q) => call('GET', '/messages/search?q=' + encodeURIComponent(q)),
     message: (id) => call('GET', '/messages/' + id),
     send: (message) => call('POST', '/messages', message),
     remove: (id) => call('DELETE', '/messages/' + id),

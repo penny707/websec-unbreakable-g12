@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Unbreakable.Models;
 
+// De server bewaart enkel versleutelde data: geen bericht, geen onderwerp, geen sleutel.
 public class Message
 {
     public int Id { get; set; }
@@ -16,15 +17,18 @@ public class Message
     [Display(Name = "Aan")]
     public string Recipient { get; set; }
 
+    // One-time pad mod 37: enkel A-Z, 0-9 en _
     [Required]
-    [StringLength(100)]
-    [Display(Name = "Onderwerp")]
-    public string Subject { get; set; }
+    [StringLength(40)]
+    public string Ciphertext { get; set; }
 
+    // Nummer van de lijn in het codeboek (geen geheim)
+    public int CodebookLine { get; set; }
+
+    // HMAC-SHA256 in hex
     [Required]
-    [StringLength(2000)]
-    [Display(Name = "Bericht")]
-    public string Body { get; set; }
+    [StringLength(64)]
+    public string Hmac { get; set; }
 
     [Display(Name = "Verzonden")]
     public DateTime SentAt { get; set; }
